@@ -1,13 +1,15 @@
 import pdb
 import os
 
-from flask import Flask, render_template, request, flash, redirect, session, g
+from functools import wraps
+from flask import Flask, render_template, request, flash, redirect, request, session, g
 from flask_debugtoolbar import DebugToolbarExtension
+from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
 from IPython import embed
 
 from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
-from models import db, connect_db, User, Message
+from models import db, connect_db, User, Message, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -30,6 +32,9 @@ connect_db(app)
 ##############################################################################
 # User signup/login/logout
 
+    # if not g.user:
+    #     flash("Access unauthorized.", "danger")
+    #     return redirect("/")
 
 @app.before_request
 def add_user_to_g():
@@ -53,6 +58,17 @@ def do_logout():
 
     if CURR_USER_KEY in session:
         del session[CURR_USER_KEY]
+
+######## I'll be honest I have no idea what I'm doing here ########
+
+# def login_required(f):
+#     @wraps(f)
+#     def check_logged_in():
+#         if not g.user:
+#             flash("Access unauthorized.", "danger")
+#             return redirect("/")
+#         return f
+#     return check_logged_in
 
 
 @app.route('/signup', methods=["GET", "POST"])
@@ -162,6 +178,7 @@ def users_show(user_id):
 
 
 @app.route('/users/<int:user_id>/following')
+# @login_required
 def show_following(user_id):
     """Show list of people this user is following."""
 
@@ -184,6 +201,18 @@ def users_followers(user_id):
     user = User.query.get_or_404(user_id)
     return render_template('users/followers.html', user=user)
 
+@app.route('/users/<int:user_id>/likes')
+def users_likes(user_id):
+    """Show list of Likes of this user."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+    likes = db.session.query(Message).join(Likes, Message.id == Likes.message_id).filter(Likes.user_id == user.id).all()
+
+    return render_template('users/likes.html', user = user, liked_messages = likes)
 
 @app.route('/users/follow/<int:follow_id>', methods=['POST'])
 def add_follow(follow_id):
@@ -290,6 +319,37 @@ def messages_show(message_id):
     msg = Message.query.get(message_id)
     return render_template('messages/show.html', message=msg)
 
+@app.route('/messages/add_like', methods=["POST"])
+def messages_like():
+    """Like a message"""
+
+    if not g.user:
+       flash("Access unauthorized.", "danger")
+       return redirect("/")
+    
+    data = request.json
+    message_id = data.get("message_id")
+    user_id = data.get("user_id") or g.user.id
+    # ^ for testing purposes, in-app doesn't send user_id data, but to test we'll want to be able to access an input user_id field, so set a default value
+    new_like = Likes(user_id = user_id, message_id = int(message_id))
+    db.session.add(new_like)
+    db.session.commit()
+    return "Liked!"
+
+@app.route('/messages/remove_like', methods=["POST"])
+def messages_unlike():
+    """Unlike a message"""
+
+    if not g.user:
+       flash("Access unauthorized.", "danger")
+       return redirect("/")
+    
+    data = request.json
+    message_id = data.get("message_id")
+    like = Likes.query.filter(and_(Likes.user_id == g.user.id), (Likes.message_id == message_id)).one()
+    db.session.delete(like)
+    db.session.commit()
+    return "Unliked!"
 
 @app.route('/messages/<int:message_id>/delete', methods=["POST"])
 def messages_destroy(message_id):
@@ -298,6 +358,9 @@ def messages_destroy(message_id):
     if not g.user:
         flash("Access unauthorized.", "danger")
         return redirect("/")
+    
+    data = request.json
+    message_id = data.get("message_id")
 
     msg = Message.query.get(message_id)
     db.session.delete(msg)
@@ -326,8 +389,10 @@ def homepage():
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
+        
+        likes = [like.id for like in g.user.likes]
 
-        return render_template('home.html', messages=messages)
+        return render_template('home.html', messages=messages, likes = likes)
 
     else:
         return render_template('home-anon.html')
