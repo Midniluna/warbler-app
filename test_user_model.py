@@ -7,6 +7,7 @@
 
 import os
 from unittest import TestCase
+from flask import g
 
 from models import db, User, Message, Follows
 
@@ -28,9 +29,8 @@ from app import app
 
 db.create_all()
 
-
 class UserModelTestCase(TestCase):
-    """Test views for messages."""
+    """Test User Model."""
 
     def setUp(self):
         """Create test client, add sample data."""
@@ -56,3 +56,58 @@ class UserModelTestCase(TestCase):
         # User should have no messages & no followers
         self.assertEqual(len(u.messages), 0)
         self.assertEqual(len(u.followers), 0)
+        self.assertEqual(u.__repr__(), f"<User #{u.id}: {u.username}, {u.email}>")
+
+    def test_follows(self):
+        """Does user follows work as expected?"""
+
+        u1 = User(
+            email="first@user.com",
+            username="firsttestuser",
+            password="HASHED_PASS"  
+        )
+
+        u2 = User(
+            email="second@user.com",
+            username="secondtestuser",
+            password="HASHED_PASS"
+        )
+
+        db.session.add_all([u1, u2])
+        db.session.commit()
+        
+        self.assertFalse(u1.is_following(u2))
+        self.assertFalse(u2.is_following(u1))
+
+        follow1 = Follows(user_being_followed_id = u1.id, user_following_id = u2.id)
+        follow2 = Follows(user_being_followed_id = u2.id, user_following_id = u1.id)
+        db.session.add_all([follow1, follow2])
+        db.session.commit()
+
+        self.assertTrue(u1.is_following(u2))
+        self.assertTrue(u2.is_following(u1))
+        
+    def test_user_validation(self):
+        """Assure username is unique upon signup + verify login validation"""
+
+        u = User(
+            email="test@test.com",
+            username="testuser",
+            password="PASSWORD"
+        )
+
+        hashed_user = u.signup(username=u.username, email = u.email, password = u.password, image_url = None)
+        self.assertIsInstance(hashed_user, User)
+
+        db.session.add(hashed_user)
+        db.session.commit()
+        
+        logged_in = hashed_user.authenticate(username = u.username, password = u.password)
+        self.assertIsInstance(logged_in, User)
+
+        bad_user = hashed_user.authenticate(username = u.username, password = "not it")
+        bad_user2 = hashed_user.authenticate(username = "This also isn't it", password = u.password)
+        self.assertFalse(bad_user)
+        self.assertFalse(bad_user2)
+
+        # username, email, password, image_url
