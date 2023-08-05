@@ -1,8 +1,8 @@
 import pdb
 import os
 
-from functools import wraps
 from flask import Flask, render_template, request, flash, redirect, request, session, g
+from flask_login import LoginManager, login_required
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,9 @@ from models import db, connect_db, User, Message, Likes
 CURR_USER_KEY = "curr_user"
 
 app = Flask(__name__)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
 # Get DB_URI from environ variable (useful for production/testing) or,
 # if not set there, use development local db.
@@ -32,9 +35,9 @@ connect_db(app)
 ##############################################################################
 # User signup/login/logout
 
-    # if not g.user:
-    #     flash("Access unauthorized.", "danger")
-    #     return redirect("/")
+@login_manager.user_loader
+def load_user(user_id):
+    return User.get(user_id) or None
 
 @app.before_request
 def add_user_to_g():
@@ -46,6 +49,14 @@ def add_user_to_g():
     else:
         g.user = None
 
+# def login_required(f):
+#     @wraps(f)
+#     def check_logged_in(args, **kwargs):
+#         if not g.user:
+#             flash("Access unauthorized.", "danger")
+#             return redirect("/")
+#         return f(args, **kwargs)
+#     return check_logged_in
 
 def do_login(user):
     """Log in user."""
@@ -58,17 +69,6 @@ def do_logout():
 
     if CURR_USER_KEY in session:
         del session[CURR_USER_KEY]
-
-######## I'll be honest I have no idea what I'm doing here ########
-
-# def login_required(f):
-#     @wraps(f)
-#     def check_logged_in():
-#         if not g.user:
-#             flash("Access unauthorized.", "danger")
-#             return redirect("/")
-#         return f
-#     return check_logged_in
 
 
 @app.route('/signup', methods=["GET", "POST"])
