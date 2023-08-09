@@ -3,6 +3,7 @@ import os
 
 from flask import Flask, render_template, request, flash, redirect, request, session, g
 from flask_login import LoginManager, login_required
+from functools import wraps
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
@@ -49,14 +50,14 @@ def add_user_to_g():
     else:
         g.user = None
 
-# def login_required(f):
-#     @wraps(f)
-#     def check_logged_in(args, **kwargs):
-#         if not g.user:
-#             flash("Access unauthorized.", "danger")
-#             return redirect("/")
-#         return f(args, **kwargs)
-#     return check_logged_in
+def login_required(f):
+    @wraps(f)
+    def check_logged_in(args, **kwargs):
+        if not g.user:
+            flash("Access unauthorized.", "danger")
+            return redirect("/")
+        return f(args, **kwargs)
+    return check_logged_in
 
 def do_login(user):
     """Log in user."""
@@ -178,13 +179,13 @@ def users_show(user_id):
 
 
 @app.route('/users/<int:user_id>/following')
-# @login_required
+@login_required
 def show_following(user_id):
     """Show list of people this user is following."""
 
-    if not g.user:
-        flash("Access unauthorized.", "danger")
-        return redirect("/")
+    # if not g.user:
+    #     flash("Access unauthorized.", "danger")
+    #     return redirect("/")
 
     user = User.query.get_or_404(user_id)
     return render_template('users/following.html', user=user)
